@@ -1,0 +1,238 @@
+name: Sync Package Documentation
+
+on:
+  # Run the workflow daily at midnight
+  schedule:
+    - cron: "0 0 * * *"
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: "Force update all READMEs regardless of changes"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+  # Run when the sources.yml file is updated
+  push:
+    paths:
+      - "sources.yml"
+
+jobs:
+  sync-documentation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout goblin-remote repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+
+      - name: Install YAML parser
+        run: go install gopkg.in/yaml.v2@latest
+
+      - name: Create packages directory if it doesn't exist
+        run: mkdir -p packages
+
+      - name: Create sync documentation script
+        run: |
+          cat > sync_docs.go << 'EOL'
+          package main
+
+          import (
+            "fmt"
+            "io/ioutil"
+            "log"
+            "net/http"
+            "os"
+            "path/filepath"
+            "strings"
+
+            "gopkg.in/yaml.v2"
+          )
+
+          // Package represents a package definition in sources.yml
+          type Package struct {
+            Name      string     `yaml:"name"`
+            Version   string     `yaml:"version"`
+            BaseURL   string     `yaml:"base_url"`
+            RepoURL   string     `yaml:"repo_url,omitempty"` // Optional: explicit repo URL
+            Artifacts []Artifact `yaml:"artifacts"`
+          }
+
+          // Artifact represents a specific build artifact
+          type Artifact struct {
+            OS   string `yaml:"os"`
+            Arch string `yaml:"arch"`
+            File string `yaml:"file"`
+          }
+
+          // Manifest represents the top-level structure of sources.yml
+          type Manifest struct {
+            Packages []Package `yaml:"packages"`
+          }
+
+          // extractGitHubRepoFromBaseURL extracts the GitHub repository from a BaseURL
+          func extractGitHubRepoFromBaseURL(baseURL string) (string, error) {
+            // Handle URLs like https://github.com/Alexandre1a/GoSH/releases/download/v1.0.0/
+            if strings.Contains(baseURL, "github.com") {
+              parts := strings.Split(baseURL, "/")
+              if len(parts) >= 5 {
+                return fmt.Sprintf("https://github.com/%s/%s", parts[3], parts[4]), nil
+              }
+            }
+            return "", fmt.Errorf("could not extract repository URL from base_url: %s", baseURL)
+          }
+
+          // downloadReadme fetches the README from the given repository
+          func downloadReadme(repoURL string) ([]byte, error) {
+            // Try different README formats: README.md, README, readme.md
+            readmeFormats := []string{
+              "/main/README.md",
+              "/master/README.md",
+              "/main/README",
+              "/master/README",
+              "/main/readme.md",
+              "/master/readme.md",
+            }
+
+            var lastErr error
+            for _, format := range readmeFormats {
+              readmeURL := strings.TrimSuffix(repoURL, "/") + "/raw" + format
+              fmt.Printf("Trying to download README from: %s\n", readmeURL)
+
+              resp, err := http.Get(readmeURL)
+              if err != nil {
+                lastErr = err
+                continue
+              }
+              defer resp.Body.Close()
+
+              if resp.StatusCode == 200 {
+                return ioutil.ReadAll(resp.Body)
+              }
+
+              lastErr = fmt.Errorf("HTTP status %d for %s", resp.StatusCode, readmeURL)
+            }
+
+            return nil, fmt.Errorf("failed to download README: %v", lastErr)
+          }
+
+          // writePackageInfo creates a package directory and writes the README
+          func writePackageInfo(pkg Package, forceUpdate bool) error {
+            // Create package directory if it doesn't exist
+            packageDir := filepath.Join("packages", pkg.Name)
+            if err := os.MkdirAll(packageDir, 0755); err != nil {
+              return fmt.Errorf("failed to create package directory %s: %v", packageDir, err)
+            }
+
+            // Determine repository URL - either use explicit repo_url or extract from base_url
+            repoURL := pkg.RepoURL
+            var err error
+            if repoURL == "" {
+              repoURL, err = extractGitHubRepoFromBaseURL(pkg.BaseURL)
+              if err != nil {
+                return err
+              }
+            }
+
+            // Check if we already have a README and if it needs updating
+            readmePath := filepath.Join(packageDir, "README.md")
+            if !forceUpdate {
+              _, err := os.Stat(readmePath)
+              if err == nil {
+                fmt.Printf("README for %s already exists. Skipping (use force_update to override).\n", pkg.Name)
+                return nil
+              }
+            }
+
+            // Download README from repository
+            readme, err := downloadReadme(repoURL)
+            if err != nil {
+              return fmt.Errorf("failed to download README for %s: %v", pkg.Name, err)
+            }
+
+            // Add a header indicating this is a synced document
+            headerNotice := fmt.Sprintf("<!-- This README was automatically synced from %s on %s -->\n\n",
+              repoURL,
+              "{{ date }}")
+
+            // Write README to package directory
+            content := []byte(headerNotice + string(readme))
+            if err := ioutil.WriteFile(readmePath, content, 0644); err != nil {
+              return fmt.Errorf("failed to write README for %s: %v", pkg.Name, err)
+            }
+
+            fmt.Printf("Successfully synced README for %s\n", pkg.Name)
+            return nil
+          }
+
+          func main() {
+            // Parse command-line arguments
+            forceUpdate := false
+            for _, arg := range os.Args[1:] {
+              if arg == "--force" || arg == "-f" {
+                forceUpdate = true
+                break
+              }
+            }
+
+            // Read sources.yml
+            data, err := ioutil.ReadFile("sources.yml")
+            if err != nil {
+              log.Fatalf("Error reading sources.yml: %v", err)
+            }
+
+            // Parse YAML
+            var manifest Manifest
+            if err := yaml.Unmarshal(data, &manifest); err != nil {
+              log.Fatalf("Error parsing sources.yml: %v", err)
+            }
+
+            // Process each package
+            for _, pkg := range manifest.Packages {
+              fmt.Printf("Processing package: %s (version %s)\n", pkg.Name, pkg.Version)
+
+              if err := writePackageInfo(pkg, forceUpdate); err != nil {
+                log.Printf("Warning: %v", err)
+                // Continue with other packages even if one fails
+              }
+            }
+
+            fmt.Println("Documentation sync completed")
+          }
+          EOL
+
+      - name: Run documentation sync
+        run: |
+          # Replace {{date}} with actual date
+          sed -i "s/{{ date }}/$(date +'%Y-%m-%d %H:%M:%S UTC')/g" sync_docs.go
+
+          # Run the sync with force update if requested
+          if [ "${{ github.event.inputs.force_update }}" = "true" ]; then
+            go run sync_docs.go --force
+          else
+            go run sync_docs.go
+          fi
+
+      - name: Commit changes if any
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
+          if [[ -n $(git status -s packages/) ]]; then
+            git add packages/
+            git commit -m "Sync package documentation ($(date +'%Y-%m-%d'))"
+            git push
+          else
+            echo "No documentation changes detected"
+          fi

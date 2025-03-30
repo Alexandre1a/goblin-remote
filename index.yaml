@@ -1,0 +1,10 @@
+api-version: git-v1
+packages:
+  gosh:
+    repo: https://github.com/alexandre1a/gosh
+    ref: main # or tag/branch
+    gosh: 0.1.0
+    manifest: .goblin.yaml
+    signatures:
+      - commit: abc123
+        gpg: XYZ789
