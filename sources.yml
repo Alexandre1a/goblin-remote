@@ -15,3 +15,26 @@ packages:
       - os: "darwin"
         arch: "arm64"
         file: "gosh-darwin-arm64"
+
+  - name: "goblin"
+    version: "latest"
+    base_url: "https://github.com/Alexandre1a/goblin/releases/latest/download/"
+    artifacts:
+      - os: "linux"
+        arch: "amd64"
+        file: "goblin-linux-amd64"
+      - os: "linux"
+        arch: "arm64"
+        file: "goblin-linux-arm64"
+      - os: darwin
+        arch: "amd64"
+        file: "goblin-darwin-amd64"
+      - os: darwin
+        arch: "arm64"
+        file: "goblin-darwin-arm64"
+      - os: windows
+        arch: "amd64"
+        file: "goblin-windows-amd64.exe"
+      - os: windows
+        arch: "arm64"
+        file: "goblin-windows-arm64.exe"
