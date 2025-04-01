@@ -1,7 +1,7 @@
 packages:
   - name: "gosh"
     version: "latest"
-    repo_utl: "https://raw.githubusercontent.com/Alexandre1a/GoSH"
+    repo_url: "https://raw.githubusercontent.com/Alexandre1a/GoSH"
     base_url: "https://github.com/Alexandre1a/GoSH/releases/latest/download/"
     artifacts:
       - os: "linux"
@@ -19,6 +19,7 @@ packages:
 
   - name: "goblin"
     version: "latest"
+    repo_url: "https://raw.githubusercontent.com/Alexandre1a/goblin"
     base_url: "https://github.com/Alexandre1a/goblin/releases/latest/download/"
     artifacts:
       - os: "linux"
