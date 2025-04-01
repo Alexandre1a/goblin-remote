@@ -1,6 +1,7 @@
 packages:
   - name: "gosh"
     version: "latest"
+    repo_utl: "https://raw.githubusercontent.com/Alexandre1a/GoSH"
     base_url: "https://github.com/Alexandre1a/GoSH/releases/latest/download/"
     artifacts:
       - os: "linux"

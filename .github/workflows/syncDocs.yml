@@ -91,9 +91,9 @@ jobs:
             mkdir -p "packages/$pkg"
 
             # Try to download README from main branch first, fallback to master
-            if curl -s -f "$REPO_URL/raw/main/README.md" -o "packages/$pkg/README.md"; then
+            if curl -s -f "$REPO_URL/refs/heads/main/README.md" -o "packages/$pkg/README.md"; then
               echo "Downloaded README from main branch for $pkg"
-            elif curl -s -f "$REPO_URL/raw/master/README.md" -o "packages/$pkg/README.md"; then
+            elif curl -s -f "$REPO_URL/refs/heads/master/README.md" -o "packages/$pkg/README.md"; then
               echo "Downloaded README from master branch for $pkg"
             else
               echo "Could not find README for $pkg in main or master branches"
