@@ -1,19 +1,14 @@
 name: Sync Package Documentation
 
 on:
-  # Run the workflow daily at midnight
   schedule:
     - cron: "0 0 * * *"
-
-  # Allow manual triggering
   workflow_dispatch:
     inputs:
       package_name:
         description: "Specific package to update (leave empty for all)"
         required: false
         type: string
-
-  # Run when the sources.yml file is updated
   push:
     paths:
       - "sources.yml"
@@ -23,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout goblin-remote repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install yq for YAML processing
+      - name: Install yq
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
@@ -35,8 +30,6 @@ jobs:
         id: setup
         run: |
           mkdir -p packages
-
-          # If a specific package was requested, filter for just that one
           if [ -n "${{ github.event.inputs.package_name }}" ]; then
             echo "PACKAGE_FILTER=${{ github.event.inputs.package_name }}" >> $GITHUB_ENV
           else
@@ -46,84 +39,64 @@ jobs:
       - name: Extract packages and repo URLs
         id: extract
         run: |
-          # Extract package names and repo URLs (or base URLs to derive repos)
-          PACKAGES=$(yq e '.packages[] | select(.name | match(env(PACKAGE_FILTER))) | .name' sources.yml)
-          echo "Found packages to sync: $PACKAGES"
+          PACKAGES=$(yq e '.packages[] | select(.name | match(env(PACKAGE_FILTER))) | .name' sources.yml | tr '\n' ' ')
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
-          # For each package, either use repo_url or extract from base_url
           for pkg in $PACKAGES; do
-            # Try to get explicit repo_url first
             REPO_URL=$(yq e ".packages[] | select(.name == \"$pkg\") | .repo_url" sources.yml)
 
-            # If repo_url is null, extract from base_url
             if [ "$REPO_URL" = "null" ]; then
               BASE_URL=$(yq e ".packages[] | select(.name == \"$pkg\") | .base_url" sources.yml)
-
-              # Extract GitHub owner and repo from URLs like:
-              # https://github.com/Alexandre1a/GoSH/releases/download/v1.0.0/
               if [[ $BASE_URL == *"github.com"* ]]; then
-                OWNER=$(echo $BASE_URL | sed -n 's/.*github\.com\/\([^\/]*\)\/.*/\1/p')
-                REPO=$(echo $BASE_URL | sed -n 's/.*github\.com\/[^\/]*\/\([^\/]*\)\/.*/\1/p')
+                OWNER=$(echo "$BASE_URL" | awk -F/ '{print $4}')
+                REPO=$(echo "$BASE_URL" | awk -F/ '{print $5}')
                 REPO_URL="https://github.com/$OWNER/$REPO"
               fi
             fi
 
             if [ -n "$REPO_URL" ] && [ "$REPO_URL" != "null" ]; then
               echo "${pkg}_REPO_URL=$REPO_URL" >> $GITHUB_ENV
-            else
-              echo "Warning: Could not determine repository URL for $pkg"
             fi
           done
 
-      - name: Sync documentation for each package
+      - name: Sync documentation
         run: |
           for pkg in $PACKAGES; do
             pkg_repo_var="${pkg}_REPO_URL"
             REPO_URL="${!pkg_repo_var}"
 
             if [ -z "$REPO_URL" ]; then
-              echo "Skipping $pkg - No repository URL found"
+              echo "Skipping $pkg - No repo URL"
               continue
             fi
 
-            echo "Processing $pkg from $REPO_URL"
+            OWNER=$(echo "$REPO_URL" | awk -F/ '{print $4}')
+            REPO=$(echo "$REPO_URL" | awk -F/ '{print $5}')
             mkdir -p "packages/$pkg"
 
-            # Try to download README from main branch first, fallback to master
-            if curl -s -f "$REPO_URL/refs/heads/main/README.md" -o "packages/$pkg/README.md"; then
-              echo "Downloaded README from main branch for $pkg"
-            elif curl -s -f "$REPO_URL/refs/heads/master/README.md" -o "packages/$pkg/README.md"; then
-              echo "Downloaded README from master branch for $pkg"
+            # Try main and master branches
+            if curl -sLf "https://raw.githubusercontent.com/$OWNER/$REPO/main/README.md" -o "packages/$pkg/README.md" ||
+               curl -sLf "https://raw.githubusercontent.com/$OWNER/$REPO/master/README.md" -o "packages/$pkg/README.md"; then
+              sed -i "1i<!-- Synced from $REPO_URL ($(date)) -->\n" "packages/$pkg/README.md"
+              echo "Synced $pkg"
             else
-              echo "Could not find README for $pkg in main or master branches"
-              continue
+              echo "Failed to download README for $pkg"
             fi
-
-            # Add header to the README
-            sed -i "1i<!-- This README was automatically synced from $REPO_URL on $(date +'%Y-%m-%d %H:%M:%S UTC') -->\n\n" "packages/$pkg/README.md"
-
-            echo "Successfully synced documentation for $pkg"
           done
 
-      - name: Commit changes if any
+      - name: Commit changes
         run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions Bot"
-
-          if [[ -n $(git status -s packages/) ]]; then
-            git add packages/
-            git commit -m "Sync package documentation ($(date +'%Y-%m-%d'))"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add packages/
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "Docs sync: $(date +'%Y-%m-%d')"
             git push
           else
-            echo "No documentation changes detected"
+            echo "No changes"
           fi
+
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 permissions:
-  contents: write # Permet de manipuler le contenu du repo
-  issues: write # Permet de créer des issues, si nécessaire pour le release
-  pull-requests: write # Autorise la gestion des PRs
-  actions: write # Permet de gérer les workflows
-  pages: write # Si tu utilises GitHub Pages
-  discussions: write # Si tu utilises Discussions
+  contents: write
