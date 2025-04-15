@@ -1,4 +1,4 @@
-<!-- Synced from https://github.com/Alexandre1a/goblin (Mon Apr 14 01:52:43 UTC 2025) -->
+<!-- Synced from https://github.com/Alexandre1a/goblin (Tue Apr 15 01:51:19 UTC 2025) -->
 
 # goblin
 A package manager in Go

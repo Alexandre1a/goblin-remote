@@ -1,4 +1,4 @@
-<!-- Synced from https://github.com/Alexandre1a/GoSH (Mon Apr 14 01:52:43 UTC 2025) -->
+<!-- Synced from https://github.com/Alexandre1a/GoSH (Tue Apr 15 01:51:19 UTC 2025) -->
 
 # GoSh!
 A Shell made in Go, for fun  
@@ -55,3 +55,6 @@ We can list the fact that interactive programs, like SSH or VIM work partialy.
 The config has to be manualy created and populated.  
 Also pipes aren't supported yet, so no `ls | grep "thing"`  
 PTY currently don't support signals like 'Ctrl+C' so don't use vim, nano nor nvim for exemple.  
+
+## ToDo
+- Tab completion (for cd)
