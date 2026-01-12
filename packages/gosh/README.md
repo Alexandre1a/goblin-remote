@@ -1,4 +1,4 @@
-<!-- Synced from https://github.com/Alexandre1a/GoSH (Sun Jan 11 02:21:39 UTC 2026) -->
+<!-- Synced from https://github.com/Alexandre1a/GoSH (Mon Jan 12 02:11:24 UTC 2026) -->
 
 # GoSh!
 A Shell made in Go, for fun  
